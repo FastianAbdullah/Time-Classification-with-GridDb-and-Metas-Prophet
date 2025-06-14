@@ -1,8 +1,3 @@
-### Key Points
-- The blog post focuses on time-series forecasting, not classification, using GridDB and Prophet, despite the title suggesting classification.
-- It covers loading, cleaning, and storing daily minimum temperature data in GridDB, then forecasting with Prophet, achieving an MAE of 2.09 and RMSE of 2.67.
-- The structure follows a provided example, with sections for prerequisites, data insertion, forecasting, and conclusion, using code snippets from the notebook.
-
 ### Introduction
 This blog post guides you through forecasting daily minimum temperatures using GridDB, a NoSQL database for time-series data, and the Prophet model by Facebook. It’s based on a Jupyter notebook, and while the title mentions "classification," the content is about forecasting, not classification, which we’ll clarify as we go.
 
