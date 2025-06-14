@@ -160,7 +160,7 @@ plt.legend()
 plt.show()
 ```
 
-![Output](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/tree/main/imgs/temp-forecast-img.png)
+![Output](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/blob/main/imgs/temp-forecast-img.png)
 This visualization helps assess how well the Prophet model captures the trends and patterns in the temperature data, with the actual data (in one color) and forecast (in another) allowing for easy comparison, and confidence intervals indicating uncertainty.
 
 #### Conclusion and Future Directions
