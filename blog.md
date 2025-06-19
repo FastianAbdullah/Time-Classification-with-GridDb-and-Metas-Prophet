@@ -1,97 +1,310 @@
-### Introduction
-This blog post guides you through forecasting daily minimum temperatures using GridDB, a NoSQL database for time-series data, and the Prophet model by Facebook. It’s based on a Jupyter notebook, and while the title mentions "classification," the content is about forecasting, not classification, which we’ll clarify as we go.
+# Time-Series Forecasting with GridDB and Meta's Prophet Model
 
-### Prerequisites
-You’ll need these tools installed:
-- GridDB Python client: `pip install griddb-python` ([GridDB Python Client](https://pypi.org/project/griddb-python/))
-- Prophet: `pip install prophet` ([Prophet Documentation](https://facebook.github.io/prophet/))
-- Pandas, Matplotlib, Seaborn, Scikit-learn: Install via pip with their respective commands ([Pandas Documentation](https://pandas.pydata.org/), [Matplotlib Documentation](https://matplotlib.org/), [Seaborn Documentation](https://seaborn.pydata.org/), [Scikit-learn Documentation](https://scikit-learn.org/))
-Ensure GridDB is running locally for this example.
+![Output](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/blob/main/imgs/temp-forecast-img.png)
 
----
+This article shows how to build a time Series forecasting model for daily minimum temperature using GridDb and Prophet Model.
 
-### Survey Note: Detailed Analysis of Time-Series Forecasting with GridDB and Prophet
+We will retrive historical daily minimum temperatures from the kaggle dataset, insert it into a GridDb time series container and use that data to train a forecasting model which is meta prophet model developed by facebook, a specialized additive model where non-linear trends are fit with yearly, weekly and daily seasonality.
 
-#### Introduction and Context
-Time-series analysis is a vital technique for predicting future values based on historical data, with applications ranging from weather forecasting to financial analysis. This blog post, titled "Time-Series Classification with GridDb and Meta Prophet Model," is based on a Jupyter notebook that focuses on time-series forecasting, specifically predicting daily minimum temperatures. The title's mention of "classification" appears to be a misnomer, as the notebook does not involve classification tasks but rather demonstrates a forecasting workflow using GridDB and the Prophet model, developed by Facebook (now Meta). This discrepancy is noted for clarity, and the content will proceed with the forecasting approach as outlined in the notebook.
+GridDB is a robust NOSQL database optimized for efficiently handling large volumes of real-time data. Its advanced in-memory processing and time series data management make it ideal for big data and IoT applications.
 
-The dataset used is daily minimum temperatures, and the goal is to forecast future values using historical trends and seasonal patterns. GridDB, a high-performance NoSQL database optimized for time-series data, is used for data storage and management, while Prophet is chosen for its ability to handle seasonality and trends effectively. The blog post is structured to mirror the format of a provided example at [GridDB's blog](https://griddb.net/en/blog/time-series-classification-with-amazon-chronos-model-with-griddb/), which outlines a similar workflow for forecasting electricity production using Amazon Chronos and GridDB. Here, we adapt that structure to focus on the Prophet model and the temperature dataset, ensuring a comprehensive guide for readers.
+## Prerequisites
 
-#### Prerequisites and Setup
-To replicate this workflow, specific libraries must be installed. The prerequisites section lists the following tools, each with installation commands and relevant documentation:
+You need to install the following libraries to run codes in this article.
 
-- **GridDB Python client**: Essential for interacting with GridDB, installed via `pip install griddb-python` ([GridDB Python Client](https://pypi.org/project/griddb-python/)).
-- **Prophet**: A forecasting tool by Facebook, installed via `pip install prophet` ([Prophet Documentation](https://facebook.github.io/prophet/)).
-- **Pandas**: For data manipulation, installed via `pip install pandas` ([Pandas Documentation](https://pandas.pydata.org/)).
-- **Matplotlib**: For plotting, installed via `pip install matplotlib` ([Matplotlib Documentation](https://matplotlib.org/)).
-- **Seaborn**: For enhanced visualizations, installed via `pip install seaborn` ([Seaborn Documentation](https://seaborn.pydata.org/)).
-- **Scikit-learn**: For model evaluation metrics, installed via `pip install scikit-learn` ([Scikit-learn Documentation](https://scikit-learn.org/)).
+1. GridDB C Client
+2. GridDB Python client
 
-Additionally, a GridDB cluster must be running and accessible. The example assumes a local setup, but users can configure it for their environment using GridDB’s documentation, ensuring scalability for larger datasets or real-time applications.
+Instructions for installing these clients are available on [GridDB Python Package Index (Pypi)](https://pypi.org/project/griddb-python/).
 
-#### Inserting Time Series Data Into GridDB
-The workflow begins with loading and cleaning the dataset, which contains daily minimum temperatures stored in a CSV file at '/home/ali/griddb_experiments/daily-temperature-dataset/daily-minimum-temperatures.csv'. The data includes two columns: 'Date' and 'Daily minimum temperatures'.
+You must also install Prophet, Numpy, Pandas, Seaborn, Scikit-Learn and Matplotlib libraries.
 
-First, the dataset is loaded into a pandas DataFrame for initial inspection:
+The scripts below will help you install and import the necessary libraries for running codes.
+
+```bash
+%pip install prophet seaborn numpy pandas scikit-learn matplotlib
+```
 
 ```python
+import numpy as np
+import matplotlib.pyplot as plt
 import pandas as pd
-
-# Load the dataset
-data = pd.read_csv('/home/ali/griddb_experiments/daily-temperature-dataset/daily-minimum-temperatures.csv')
-print(data.head())
+import seaborn as sns
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import griddb_python as griddb
+from prophet import Prophet
 ```
 
-The 'Daily minimum temperatures' column initially contains string values, which are cleaned by extracting numeric values using a regular expression:
+## Inserting Time Series Data Into GridDB
+
+The first step is to insert the time series data we want to forecast into GridDB. This section explain the following:
+
+### Downloading and Importing Daily Minimum Temperature Data from Kaggle
+
+We will perform forecasting using the [Daily Minimum Temeperature dataset from Kaggle](https://www.kaggle.com/datasets/suprematism/daily-minimum-temperatures)
+
+The following line will import the dataset and show the first five entries in it.
 
 ```python
+data = pd.read_csv('daily-minimum-temperatures.csv')
+print(data.head(5))
+```
+
+Output:
+
+|   | Date     | Daily minimum temperatures |
+|---|----------|----------------------------|
+| 0 | 1/1/1981 | 20.7                       |
+| 1 | 1/2/1981 | 17.9                       |
+| 2 | 1/3/1981 | 18.8                       |
+| 3 | 1/4/1981 | 14.6                       |
+| 4 | 1/5/1981 | 15.8                       |
+
+The Dataset contains each day minimum temperature starting from 1st January 1981 till 31st December 1990.
+
+Now before moving forward check the data types of columns.
+
+```python
+# Check the data info
+data.info()
+```
+
+Output:
+
+``` markdown
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 3650 entries, 0 to 3649
+Data columns (total 2 columns):
+ #   Column                      Non-Null Count  Dtype 
+---  ------                      --------------  ----- 
+ 0   Date                        3650 non-null   object
+ 1   Daily minimum temperatures  3650 non-null   object
+dtypes: object(2)
+memory usage: 57.2+ KB
+```
+
+It shows that both columns are of object type. We need to convert date column into pandas datatime data type and daily minimum temperature to float type.
+
+```python
+# Pick only Floating point number as it is object right now from Min Temperature to convert it into numeric.
+data['Daily minimum temperatures'] = data['Daily minimum temperatures'].str.extract('(\d+\.?\d*)')[0]
+
+# Convert Date column to datetime
+data['Date'] = pd.to_datetime(data['Date'], format='%m/%d/%Y')
+
 # Convert temperature column to numeric
-data['Daily minimum temperatures'] = pd.to_numeric(data['Daily minimum temperatures'].str.extract('(\d+\.\d+)').squeeze(), errors='coerce')
+data['Daily minimum temperatures'] = pd.to_numeric(data['Daily minimum temperatures'])
+
+# Check the info Again.
+data.info()
 ```
 
-Next, the data is stored in GridDB, a process that involves connecting to the cluster and creating a time-series container. The connection is established as follows:
+Output:
+
+```markdown
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 3650 entries, 0 to 3649
+Data columns (total 2 columns):
+ #   Column                      Non-Null Count  Dtype         
+---  ------                      --------------  -----         
+ 0   Date                        3650 non-null   datetime64[ns]
+ 1   Daily minimum temperatures  3650 non-null   float64       
+dtypes: datetime64[ns](1), float64(1)
+memory usage: 57.2 KB
+```
+
+Now, we can plot only a single year data from our dataset to see the trend of Daily Minimum Temperature which first decreases and then increases over the course of a year.
 
 ```python
-from gs import GridStore
+# plot the trend of temperatures over time using lineplot.
+def plot_trend(data) -> None:
+    plt.figure(figsize=(15,8))
+    sns.lineplot(data=data,x='Date',y='Daily minimum temperatures')
+    plt.xlabel('Date')
+    plt.ylabel('Daily Min Temperature')
+    plt.title('Daily Min Temperature Over Time')
+    plt.show()
 
-# Connect to GridDB
-gridstore = GridStore("localhost", 10040, "admin", "admin", "test")
+    return None
 
-# Create a time series container
-container_name = "Daily-Temp"
-if not gridstore.has_container(container_name):
-    container = gridstore.create_time_series_container(container_name, "Daily-Temp", "Daily-Temp", "Daily-Temp", 10000)
-else:
-    container = gridstore.get_container(container_name)
+# Check trend of temperature over a single year.
+plot_trend(data[data['Date'].dt.year == 1981])
 ```
 
-The data is then inserted into the container, ensuring efficient storage for later retrieval:
+Output:
+
+![Temperature-over-a-Single-Year](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/blob/main/imgs/temp-over-a-single-year.png)
+
+### Connect to GridDB
+
+To connect to GridDB, you need to create an object of the `StoreFactory` class. Next, call the `get_store()` method on the store factory object and pass the DB host and cluster name, user, and password.
+
+To test if the connection is successful, call the `get_container()` method and pass it the name of any container. If you see the following output, your connection is successful.
 
 ```python
-# Insert data into GridDB
-for index, row in data.iterrows():
-    row_key = container.row_key()
-    row_key.set_timestamp(row['Date'])
-    row_obj = container.get_row(row_key)
-    row_obj.set_field('Daily-minimum-temperatures', row['Daily minimum temperatures'])
-    container.put_row(row_obj)
+# GridDB connection details
+DB_HOST = "127.0.0.1"
+DB_PORT = 10001
+DB_CLUSTER = "myCluster"
+DB_USER = "admin"
+DB_PASS = "admin"
+
+factory = griddb.StoreFactory.get_instance()
+
+try:
+    gridstore=factory.get_store(
+        host=DB_HOST,
+        port=DB_PORT,
+        cluster_name=DB_CLUSTER,
+        username=DB_USER,
+        password=DB_PASS
+    )
+    
+    container1 = gridstore.get_container("Daily-Temp")
+    if container1 == None:
+       print("Container does not exist")
+    print("Successfully connected to GridDB")
+
+except griddb.GSException as e:
+   for i in range(e.get_error_stack_size()):
+       print("[", i, "]")
+       print(e.get_error_code(i))
+       print(e.get_location(i))
+       print(e.get_message(i))
 ```
 
-This step leverages GridDB’s capabilities for managing large-scale time-series data, making it ready for analysis.
+Output:
 
-#### Forecasting Daily Minimum Temperatures using Prophet
-With the data stored in GridDB, the next step is to retrieve it for modeling. The data is fetched and prepared for the Prophet model, which requires specific column names: 'ds' for dates and 'y' for values.
+``` markdown
+Container does not exist
+Successfully connected to GridDB
+```
+
+### Create Container
+
+Now, our connection to GridDB server is successful. Let's move on to create a container for our dataset which will help us to insert our data.
+
+GridDb containers are created by specifying the `ContainerInfo` class objects which consists of `ContainerName` , `Columns info list` and `Container Type`.
+
+The `Container Name` could be any name you like.However, the `Columns info list` must be a list of lists, each nested list containing the column name and the column type. Lastly, for `Container Type` specify the type of container which in our case is `griddb.ContainerType.TIME_SERIES`
+
+Finally, call the `put_container()` method and pass to it the ContainerInfo class object to create a container in the GridDB.
+
+```python
+try:
+    # Create a new Collection of Store.
+    coninfo = griddb.ContainerInfo("Daily-Temp",
+                                   [
+                                       ["Date", griddb.Type.TIMESTAMP],
+                                       ["Daily-minimum-temperatures", griddb.Type.FLOAT]
+                                   ],
+                                   type=griddb.ContainerType.TIME_SERIES)
+    gridstore.put_container(coninfo)
+    container = gridstore.get_container("Daily-Temp")
+    if cont == None:
+        print("Failed to create container")
+    else:
+        print(f"Container Created Successfully")
+except griddb.GSException as e:
+   for i in range(e.get_error_stack_size()):
+       print("[", i, "]")
+       print(e.get_error_code(i))
+       print(e.get_location(i))
+       print(e.get_message(i))
+```
+
+Output:
+
+``` markdown
+Container Created Successfully
+```
+
+Now within our `container` variable we have successfully get the container. We will use it next to insert the data into it.
+
+### Insert Daily Minimum Temperature Data into GridDB
+
+To insert the data into our `container` object, we will iterate though all the rows of the data and by using the `put` method we will place the `Date` Column and `Daily Minimum Temperature` column.
+
+```python
+# Put Data into Grid DataBase.
+try:
+    for index,row in data.iterrows():
+        cont.put([row["Date"],row["Daily minimum temperatures"]])
+    print(f"Insertion Completed Successfully.")
+except griddb.GSException as e:
+   for i in range(e.get_error_stack_size()):
+       print("[", i, "]")
+       print(e.get_error_code(i))
+       print(e.get_location(i))
+       print(e.get_message(i)) 
+```
+
+Output
+
+``` markdown
+Insertion Completed Successfully.
+```
+
+## Forecasting Daily Minimum Temperatures using Meta Prophet Model
+
+With the data stored in GridDB, the next step is to retrieve it for modeling. To do so, you can use `get_container()` method to get the created container by passing the container name you want to retrieve.
+
+Call the `SELECT *` query using the conainer's `query()` method. Next, call the `fetch` method to get the dataset object. Finally, call the `fetch_rows()` method to store the dataset into a pandas DataFrame.
 
 ```python
 # Retrieve data from GridDB
-rows = container.get_row_all()
-data_from_griddb = pd.DataFrame([{'Date': row.get_timestamp(), 'Daily minimum temperatures': row.get_field('Daily-minimum-temperatures')} for row in rows])
-data_from_griddb['Date'] = pd.to_datetime(data_from_griddb['Date'])
+# Retrive Data from Grid Db for Model.
+try:
+    temperature_container = gridstore.get_container("Daily-Temp")
+    query = temperature_container.query("select *")
+    rs = query.fetch()
+    data=rs.fetch_rows()
+    print(f"Successfully retrived {len(data)} rows from GridDB.")
+except griddb.GSException as e:
+   for i in range(e.get_error_stack_size()):
+       print("[", i, "]")
+       print(e.get_error_code(i))
+       print(e.get_location(i))
+       print(e.get_message(i))
 
-# Prepare data for Prophet
-data_prophet = data_from_griddb.rename(columns={'Date': 'ds', 'Daily minimum temperatures': 'y'})
-data_prophet = data_prophet.sort_values('ds')
+data.head(5)
 ```
+
+Output:
+
+|   | Date       | Daily-minimum-temperatures |
+|---|------------|----------------------------|
+| 0 | 1981-01-01 | 20.700001                  |
+| 1 | 1981-01-02 | 17.900000                  |
+| 2 | 1981-01-03 | 18.799999                  |
+| 3 | 1981-01-04 | 14.600000                  |
+| 4 | 1981-01-05 | 15.800000                  |
+
+### Preparing Data and Train the Model
+
+The input to Prophet is always a dataframe with two columns: ds and y . The ds (datestamp) column should be of a format expected by Pandas, ideally YYYY-MM-DD for a date or YYYY-MM-DD HH:MM:SS for a timestamp. The y column must be numeric, and represents the measurement we wish to forecast. So let's update our dataset accordingly.
+
+```python
+# Prepare Data Format for Prophet model.
+prophet_df = pd.DataFrame(data={
+    'ds' : data['Date'],
+    'y': data['Daily-minimum-temperatures']
+})
+
+# Update its pre-generated index column and reomve it.
+prophet_df = prophet_df.sort_values('ds').reset_index(drop=True)
+prophet_df.head(5)
+```
+
+Output:
+
+|   | ds         | y         |
+|---|------------|-----------|
+| 0 | 1981-01-01 | 20.700001 |
+| 1 | 1981-01-02 | 17.900000 |
+| 2 | 1981-01-03 | 18.799999 |
+| 3 | 1981-01-04 | 14.600000 |
+| 4 | 1981-01-05 | 15.800000 |
 
 The dataset is then split into training (70%) and testing (30%) sets to evaluate the model’s performance:
 
@@ -99,75 +312,192 @@ The dataset is then split into training (70%) and testing (30%) sets to evaluate
 from sklearn.model_selection import train_test_split
 
 # Split data
-train, test = train_test_split(data_prophet, test_size=0.3, shuffle=False)
+train_data, test_data = train_test_split(prophet_df, test_size=0.3, shuffle=False)
+print("Training set:")
+print(train_data.shape)
+print("\nTest Set:")
+print(test_data.shape)
 ```
 
-The Prophet model is trained on the training data, leveraging its ability to handle seasonality and trends:
+Output:
+
+``` markdown
+Training set:
+(2555, 2)
+
+Test Set:
+(1095, 2)
+```
+
+Next, we will use Prophet Model and train the model on `train_data`.
 
 ```python
-from prophet import Prophet
+# Train the Model on Train set.
 
-# Initialize and train the model
-model = Prophet()
-model.fit(train)
+# Trend Checks.
+DAILY_CHECK=True
+WEEKLY_CHECK=False
+YEARLY_CHECK=True
+
+model = Prophet(
+    seasonality_mode='additive',
+    daily_seasonality=DAILY_CHECK,
+    weekly_seasonality=WEEKLY_CHECK,
+    yearly_seasonality=YEARLY_CHECK,
+    changepoint_prior_scale=0.05,  # Controls flexibility of trend
+    seasonality_prior_scale=10     # Controls strength of seasonality
+)
+
+model.fit(train_data)
 ```
 
-Predictions are generated for the test period, ensuring the forecast aligns with the test data length:
+### Make Predictions and Evaluate Model Performance
+
+Predictions are generated for the test period, ensuring the forecast aligns with the test data length.
 
 ```python
 # Make predictions
-future = model.make_future_dataframe(periods=len(test))
-forecast = model.predict(future)
-forecast = forecast[-len(test):]
+def make_predictions(model,periods,freq='D'):
+    future = model.make_future_dataframe(periods=periods,freq='D')
+    forecast = model.predict(future)
+    print(f"Length of ForeCast: {len(forecast)}")
+    test_forecast = forecast.tail(periods).copy()
+
+    median = test_forecast['yhat'].values           # Main prediction
+    lower = test_forecast['yhat_lower'].values      # Lower bound
+    upper = test_forecast['yhat_upper'].values      # Upper bound
+    
+    return lower, median, upper, test_forecast
+
+# Make Predictions.
+lower_bound, pred , upper_bound , forecast = make_predictions(model,periods=len(test_data))
 ```
 
-Model performance is evaluated using Mean Absolute Error (MAE) and Root Mean Squared Error (RMSE), providing quantitative measures of accuracy:
+Now, let's evaluate the predictions.Model performance is evaluated using Mean Absolute Error (MAE) and Root Mean Squared Error (RMSE), providing quantitative measures of accuracy:
 
 ```python
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-import numpy as np
+def evaluate_model(pred,ground_truth,model_name="Prophet"):
+    # Evaluate predictions with Ground truth.
+    mae = mean_absolute_error(ground_truth, pred)
+    rmse = np.sqrt(mean_squared_error(ground_truth, pred))
 
-# Calculate MAE and RMSE
-mae = mean_absolute_error(test['y'], forecast['yhat'])
-rmse = np.sqrt(mean_squared_error(test['y'], forecast['yhat']))
+    print(f"\n{model_name} Model Performance:")
+    print(f"MAE:  {mae:.2f}")
+    print(f"RMSE: {rmse:.2f}")
+    return mae, rmse
 
-print(f'MAE: {mae}')
-print(f'RMSE: {rmse}')
+# Evaluate Model.
+evaluate_model(pred=pred,ground_truth=test_data['y'].values)
+```
+
+Output:
+
+``` markdown
+Prophet Model Performance:
+MAE:  2.09
+RMSE: 2.67
 ```
 
 The results show an MAE of 2.09 and an RMSE of 2.67, indicating that, on average, predictions deviate by about 2 degrees Celsius from actual values, with slightly larger errors for outliers, suggesting reasonable accuracy for temperature forecasting.
 
-Visualization is crucial for understanding the model’s performance. The actual and predicted values are plotted, including confidence intervals for a comprehensive view:
+### Visualizations
+
+Finally, let's plot some visualizations to get a better unerstanding of model overall performance.Let's plot training set, test set and the predictions along with 80 percent confidence interval.
 
 ```python
-import matplotlib.pyplot as plt
-import seaborn as sns
+#Plot Time Series Graph Showing Train Part, Test Part and Predicted Part.
+def complete_plot_timeseries(pred, test_data, train_data=None, lower_bound=None, upper_bound=None):
+    fig = plt.figure(facecolor='w', figsize=(15, 8))
+    ax = fig.add_subplot(111)
+    
+    # Plot training data as black dots
+    if train_data is not None:
+        ax.plot(train_data['ds'].values, train_data['y'], 'k.', alpha=0.5, label="Training Data")
+    
+    # Plot test data as green dots
+    ax.plot(test_data['ds'].values, test_data['y'], 'go', alpha=0.7, label="Actual Test")
+    
+    # Plot predictions as blue line
+    ax.plot(test_data['ds'].values, pred, ls='-', c='#0072B2', linewidth=2, label="Forecast")
+    
+    # Fill confidence interval
+    if lower_bound is not None and upper_bound is not None:
+        ax.fill_between(test_data['ds'].values, lower_bound, upper_bound, 
+                       color='#0072B2', alpha=0.2, label="80% Confidence Interval")
+    
+    # Add vertical line to show train/test split
+    if train_data is not None:
+        cutoff_date = test_data['ds'].iloc[0]
+        ax.axvline(x=cutoff_date, color='gray', lw=3, alpha=0.6, linestyle='--')
+        
+        # Add text annotations
+        ax.text(x=train_data['ds'].iloc[len(train_data)//2], y=test_data['y'].max()*0.9, 
+               s='Training', color='black', fontsize=14, fontweight='bold', alpha=0.8)
+        ax.text(x=test_data['ds'].iloc[len(test_data)//2], y=test_data['y'].max()*0.9, 
+               s='Test & Forecast', color='black', fontsize=14, fontweight='bold', alpha=0.8)
+    
+    ax.set_xlabel('Date', fontsize=12)
+    ax.set_ylabel('Temperature (°C)', fontsize=12)
+    ax.set_title('Temperature Forecasting - Prophet Model', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
 
-# Plot actual vs predicted
-plt.figure(figsize=(15,8))
-plt.plot(test['ds'], test['y'], label='Actual')
-plt.plot(test['ds'], forecast['yhat'], label='Predicted')
-plt.fill_between(test['ds'], forecast['yhat_lower'], forecast['yhat_upper'], color='gray', alpha=0.2)
-plt.xlabel('Date')
-plt.ylabel('Daily Minimum Temperature')
-plt.title('Temperature Forecasting - Prophet Model')
-plt.legend()
-plt.show()
+    return None
+
+complete_plot_timeseries(pred=pred,test_data=test_data,train_data=train_data,lower_bound=lower_bound,upper_bound=upper_bound)
 ```
 
-![Output](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/blob/main/imgs/temp-forecast-img.png)
-This visualization helps assess how well the Prophet model captures the trends and patterns in the temperature data, with the actual data (in one color) and forecast (in another) allowing for easy comparison, and confidence intervals indicating uncertainty.
+Output:
+![Temp-forecast-img](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/blob/main/imgs/temp-forecast-img.png)
 
-#### Conclusion and Future Directions
+The above output shows that our model performs well and can capture the trends in the training dataset. The predictions are close to the values in the test set.
+
+We can also take out training part and only plot the test set with predictions and confidence interval for better and clear analysis.
+
+```python
+#Plot Time Series Graph Showing Test Part and Predicted Part.
+def test_data_plot_timeseries(pred, test_data, lower_bound=None, upper_bound=None):
+    fig = plt.figure(facecolor='w', figsize=(15, 8))
+    ax = fig.add_subplot(111)
+    
+    # Plot test data as green dots
+    ax.plot(test_data['ds'].values, test_data['y'], 'go', alpha=0.7, label="Actual Test")
+    
+    # Plot predictions as blue line
+    ax.plot(test_data['ds'].values, pred, ls='-', c='#0072B2', linewidth=2, label="Forecast")
+    
+    # Fill confidence interval
+    if lower_bound is not None and upper_bound is not None:
+        ax.fill_between(test_data['ds'].values, lower_bound, upper_bound, 
+                       color='#0072B2', alpha=0.2, label="80% Confidence Interval")
+    
+    ax.set_xlabel('Date', fontsize=12)
+    ax.set_ylabel('Temperature (°C)', fontsize=12)
+    ax.set_title('Temperature Forecasting - Prophet Model', fontsize=14, fontweight='bold')
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+    return None
+
+test_data_plot_timeseries(pred,test_data=test_data,lower_bound=lower_bound,upper_bound=upper_bound)
+```
+
+Output:
+![Test-Data-Img](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/blob/main/imgs/test-data-forecast.png)
+
+The above result shows that majority of data points are covered by our prediction interval which is a sign of great model performance on our time-series dataset.
+
+## Conclusion
+
 This blog post demonstrated a complete workflow for time-series forecasting using GridDB and the Prophet model. We started by loading and cleaning the daily minimum temperature dataset, storing it in GridDB, and retrieving it for modeling. We then prepared the data, trained the Prophet model, made predictions, and evaluated the results, achieving an MAE of 2.09 and an RMSE of 2.67. The visualization provided a clear comparison between actual and predicted values, highlighting the model’s ability to capture seasonal trends.
 
-GridDB’s scalability and Prophet’s ease of use make this approach suitable for various applications, such as weather prediction, energy consumption forecasting, and more. For further questions or assistance, readers can refer to the GridDB documentation or ask on Stack Overflow with the "griddb" tag ([Stack Overflow](https://stackoverflow.com/questions/ask?tags=griddb)). Future work could involve tuning hyperparameters, incorporating additional features, or addressing data quality issues to further improve prediction accuracy.
-
-#### Key Citations
-- [GridDB Python Client on PyPI](https://pypi.org/project/griddb-python/)
-- [Facebook Prophet Official Documentation](https://facebook.github.io/prophet/)
-- [Pandas Official Documentation](https://pandas.pydata.org/)
-- [Matplotlib Official Documentation](https://matplotlib.org/)
-- [Seaborn Official Documentation](https://seaborn.pydata.org/)
-- [Scikit-learn Official Documentation](https://scikit-learn.org/)
-- [Stack Overflow Questions with griddb Tag](https://stackoverflow.com/questions/ask?tags=griddb)
+> If you have any questions about the blog, please create a Stack Overflow post here [https://stackoverflow.com/questions/ask?tags=griddb](https://stackoverflow.com/questions/ask?tags=griddb).
+> Make sure that you use the "griddb" tag so our engineers can quickly reply to your questions.
