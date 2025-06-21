@@ -1,4 +1,4 @@
-# Time-Series Forecasting with GridDB and Meta's Prophet 🚀
+# Time-Series Forecasting with GridDB and Meta's Prophet 
 
 Welcome to the **Time-Series Forecasting** project! This repository demonstrates how to build a robust pipeline for forecasting daily minimum temperatures using **GridDB**, a high-performance NoSQL database, and **Meta’s Prophet**, an open-source forecasting model. Whether you're a data scientist, developer, or IoT enthusiast, this project offers a hands-on way to explore time-series analysis with cutting-edge tools.
 
@@ -26,7 +26,7 @@ To get started, ensure you have the following installed:
   pip install prophet seaborn numpy pandas scikit-learn matplotlib
   ```
 
-## 🚀 Quick Start
+## Quick Start
 
 1. **Clone the Repository**:
    ```bash
