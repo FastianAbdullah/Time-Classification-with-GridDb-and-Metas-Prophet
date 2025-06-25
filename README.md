@@ -45,7 +45,7 @@ To get started, ensure you have the following installed:
         cluster_name = "myCluster",
         username = "admin",
         password = "admin"
-    )
+      )
      coninfo = griddb.ContainerInfo("Daily-Temp", [["Date", griddb.Type.TIMESTAMP], ["Daily-minimum-temperatures", griddb.Type.FLOAT]], type=griddb.ContainerType.TIME_SERIES)
      gridstore.put_container(coninfo)
      ```
