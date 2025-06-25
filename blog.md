@@ -2,9 +2,9 @@
 
 ![Output](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/blob/main/imgs/temp-forecast-img.png)
 
-This article shows how to build a time Series forecasting model for daily minimum temperature using GridDb and Prophet Model.
+This article shows how to build a time series forecasting model for daily minimum temperature using GridDB and Prophet Model.We want to predict future daily minimum temperatures by learning from past weather data.Think of it like this - if you know how cold it's been every day for the past few years, you can make educated guesses about how cold it will be in the coming days or months.
 
-We will retrive historical daily minimum temperatures from the kaggle dataset, insert it into a GridDb time series container and use that data to train a forecasting model which is meta prophet model developed by facebook, a specialized additive model where non-linear trends are fit with yearly, weekly and daily seasonality.
+We will retrieve historical daily minimum temperatures from the kaggle dataset, insert it into a GridDB time series container and use that data to train a forecasting model which is meta prophet model developed by facebook, a specialized additive model where non-linear trends are fit with yearly, weekly and daily seasonality.
 
 GridDB is a robust NOSQL database optimized for efficiently handling large volumes of real-time data. Its advanced in-memory processing and time series data management make it ideal for big data and IoT applications.
 
@@ -41,7 +41,7 @@ The first step is to insert the time series data we want to forecast into GridDB
 
 ### Downloading and Importing Daily Minimum Temperature Data from Kaggle
 
-We will perform forecasting using the [Daily Minimum Temeperature dataset from Kaggle](https://www.kaggle.com/datasets/suprematism/daily-minimum-temperatures)
+We will perform forecasting using the [Daily Minimum Temperature dataset from Kaggle](https://www.kaggle.com/datasets/suprematism/daily-minimum-temperatures)
 
 The following line will import the dataset and show the first five entries in it.
 
@@ -60,7 +60,7 @@ Output:
 | 3 | 1/4/1981 | 14.6                       |
 | 4 | 1/5/1981 | 15.8                       |
 
-The Dataset contains each day minimum temperature starting from 1st January 1981 till 31st December 1990.
+The Dataset contains each day's minimum temperature starting from 1st January 1981 till 31st December 1990.
 
 Now before moving forward check the data types of columns.
 
@@ -83,10 +83,10 @@ dtypes: object(2)
 memory usage: 57.2+ KB
 ```
 
-It shows that both columns are of object type. We need to convert date column into pandas datatime data type and daily minimum temperature to float type.
+It shows that both columns are of object type. We need to convert the date column into pandas datatime data type and daily minimum temperature to float type.
 
 ```python
-# Pick only Floating point number as it is object right now from Min Temperature to convert it into numeric.
+# Pick only the floating point number as it is an object right now from Min Temperature to convert it into numeric.
 data['Daily minimum temperatures'] = data['Daily minimum temperatures'].str.extract('(\d+\.?\d*)')[0]
 
 # Convert Date column to datetime
@@ -95,7 +95,7 @@ data['Date'] = pd.to_datetime(data['Date'], format='%m/%d/%Y')
 # Convert temperature column to numeric
 data['Daily minimum temperatures'] = pd.to_numeric(data['Daily minimum temperatures'])
 
-# Check the info Again.
+# Check the info again.
 data.info()
 ```
 
@@ -127,7 +127,7 @@ def plot_trend(data) -> None:
 
     return None
 
-# Check trend of temperature over a single year.
+# Check the trend of temperature over a single year.
 plot_trend(data[data['Date'].dt.year == 1981])
 ```
 
@@ -143,34 +143,34 @@ To test if the connection is successful, call the `get_container()` method and p
 
 ```python
 # GridDB connection details
-DB_HOST = "127.0.0.1"
-DB_PORT = 10001
+DB_HOST = "127.0.0.1:10001"
 DB_CLUSTER = "myCluster"
 DB_USER = "admin"
 DB_PASS = "admin"
 
+# creating a connection
+
 factory = griddb.StoreFactory.get_instance()
 
 try:
-    gridstore=factory.get_store(
-        host=DB_HOST,
-        port=DB_PORT,
-        cluster_name=DB_CLUSTER,
-        username=DB_USER,
-        password=DB_PASS
+    gridstore = factory.get_store(
+        notification_member = DB_HOST,
+        cluster_name = DB_CLUSTER,
+        username = DB_USER,
+        password = DB_PASS
     )
-    
+
     container1 = gridstore.get_container("Daily-Temp")
     if container1 == None:
-       print("Container does not exist")
+        print("Container does not exist")
     print("Successfully connected to GridDB")
 
 except griddb.GSException as e:
-   for i in range(e.get_error_stack_size()):
-       print("[", i, "]")
-       print(e.get_error_code(i))
-       print(e.get_location(i))
-       print(e.get_message(i))
+    for i in range(e.get_error_stack_size()):
+        print("[", i, "]")
+        print(e.get_error_code(i))
+        print(e.get_location(i))
+        print(e.get_message(i))
 ```
 
 Output:
@@ -182,9 +182,9 @@ Successfully connected to GridDB
 
 ### Create Container
 
-Now, our connection to GridDB server is successful. Let's move on to create a container for our dataset which will help us to insert our data.
+Now, our connection to the GridDB server is successful. Let's move on to create a container for our dataset which will help us to insert our data.
 
-GridDb containers are created by specifying the `ContainerInfo` class objects which consists of `ContainerName` , `Columns info list` and `Container Type`.
+GridDB containers are created by specifying the `ContainerInfo` class objects which consist of `ContainerName` , `Columns info list` and `Container Type`.
 
 The `Container Name` could be any name you like.However, the `Columns info list` must be a list of lists, each nested list containing the column name and the column type. Lastly, for `Container Type` specify the type of container which in our case is `griddb.ContainerType.TIME_SERIES`
 
@@ -219,11 +219,11 @@ Output:
 Container Created Successfully
 ```
 
-Now within our `container` variable we have successfully get the container. We will use it next to insert the data into it.
+Now within our `container` variable we have successfully got the container. We will use it next to insert the data into it.
 
 ### Insert Daily Minimum Temperature Data into GridDB
 
-To insert the data into our `container` object, we will iterate though all the rows of the data and by using the `put` method we will place the `Date` Column and `Daily Minimum Temperature` column.
+To insert the data into our `container` object, we will iterate through all the rows of the data and by using the `put` method we will place the `Date` Column and `Daily Minimum Temperature` column.
 
 ```python
 # Put Data into Grid DataBase.
@@ -247,19 +247,18 @@ Insertion Completed Successfully.
 
 ## Forecasting Daily Minimum Temperatures using Meta Prophet Model
 
-With the data stored in GridDB, the next step is to retrieve it for modeling. To do so, you can use `get_container()` method to get the created container by passing the container name you want to retrieve.
+With the data stored in GridDB, the next step is to retrieve it for modeling. To do so, you can use the `get_container()` method to get the created container by passing the container name you want to retrieve.
 
-Call the `SELECT *` query using the conainer's `query()` method. Next, call the `fetch` method to get the dataset object. Finally, call the `fetch_rows()` method to store the dataset into a pandas DataFrame.
+Call the `SELECT *` query using the container's `query()` method. Next, call the `fetch` method to get the dataset object. Finally, call the `fetch_rows()` method to store the dataset into a pandas DataFrame.
 
 ```python
-# Retrieve data from GridDB
-# Retrive Data from Grid Db for Model.
+# Retrieve Data from Grid DB for Model.
 try:
     temperature_container = gridstore.get_container("Daily-Temp")
     query = temperature_container.query("select *")
     rs = query.fetch()
     data=rs.fetch_rows()
-    print(f"Successfully retrived {len(data)} rows from GridDB.")
+    print(f"Successfully retrieved {len(data)} rows from GridDB.")
 except griddb.GSException as e:
    for i in range(e.get_error_stack_size()):
        print("[", i, "]")
@@ -291,7 +290,7 @@ prophet_df = pd.DataFrame(data={
     'y': data['Daily-minimum-temperatures']
 })
 
-# Update its pre-generated index column and reomve it.
+# Update its pre-generated index column and remove it.
 prophet_df = prophet_df.sort_values('ds').reset_index(drop=True)
 prophet_df.head(5)
 ```
@@ -329,7 +328,7 @@ Test Set:
 (1095, 2)
 ```
 
-Next, we will use Prophet Model and train the model on `train_data`.
+Next, we will use the Prophet Model and train the model on `train_data`.
 
 ```python
 # Train the Model on Train set.
@@ -402,7 +401,7 @@ The results show an MAE of 2.09 and an RMSE of 2.67, indicating that, on average
 
 ### Visualizations
 
-Finally, let's plot some visualizations to get a better unerstanding of model overall performance.Let's plot training set, test set and the predictions along with 80 percent confidence interval.
+Finally, let's plot some visualizations to get a better understanding of model overall performance.Let's plot training set, test set and the predictions along with 80 percent confidence interval.
 
 ```python
 #Plot Time Series Graph Showing Train Part, Test Part and Predicted Part.
@@ -456,7 +455,7 @@ Output:
 
 The above output shows that our model performs well and can capture the trends in the training dataset. The predictions are close to the values in the test set.
 
-We can also take out training part and only plot the test set with predictions and confidence interval for better and clear analysis.
+We can also take out the training part and only plot the test set with predictions and confidence intervals for better and clear analysis.
 
 ```python
 #Plot Time Series Graph Showing Test Part and Predicted Part.
@@ -493,7 +492,7 @@ test_data_plot_timeseries(pred,test_data=test_data,lower_bound=lower_bound,upper
 Output:
 ![Test-Data-Img](https://github.com/FastianAbdullah/Time-Classification-with-GridDb-and-Metas-Prophet/blob/main/imgs/test-data-forecast.png)
 
-The above result shows that majority of data points are covered by our prediction interval which is a sign of great model performance on our time-series dataset.
+The above result shows that the majority of data points are covered by our prediction interval which is a sign of great model performance on our time-series dataset.
 
 ## Conclusion
 

@@ -35,12 +35,17 @@ To get started, ensure you have the following installed:
    ```
 
 2. **Set Up GridDB**:
-   - Install GridDB and configure the server (host: `127.0.0.1`, port: `10001`, cluster: `myCluster`, user: `admin`, password: `admin`).
+   - Install GridDB and configure the server (notification_member: `127.0.0.1:10001`, cluster: `myCluster`, user: `admin`, password: `admin`).
    - Create a time-series container:
      ```python
      import griddb_python as griddb
      factory = griddb.StoreFactory.get_instance()
-     gridstore = factory.get_store(host="127.0.0.1", port=10001, cluster_name="myCluster", username="admin", password="admin")
+     gridstore = factory.get_store(
+        notification_member = "127.0.0.1:10001",
+        cluster_name = "myCluster",
+        username = "admin",
+        password = "admin"
+    )
      coninfo = griddb.ContainerInfo("Daily-Temp", [["Date", griddb.Type.TIMESTAMP], ["Daily-minimum-temperatures", griddb.Type.FLOAT]], type=griddb.ContainerType.TIME_SERIES)
      gridstore.put_container(coninfo)
      ```
